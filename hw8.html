@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>HW 8</title>
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <style type="text/css">
+      .horiz{
+          display: flex !important;
+      }
+      .radios{
+          padding-left: 10px;
+      }
+      input[type="radio"] {
+          margin-left: 10px !important;
+          margin-right:8px;
+      }
+      #tooltip{
+              position:absolute;
+              width:175px;
+              height:auto;
+              padding:5px;
+              background-color: white;
+              border-radius:10px;
+              box-shadow: 4px 4px 10px rgba(0,0,0,0.4);
+              pointer-events: none;
+      }
+       #tooltip.hidden{
+        display:none !important;
+      }
+       #tooltip p{
+        margin:0;
+        font-family: sans-serif;
+        font-size:12px;
+      }
+      .deselected{
+          fill:lightgray !important;
+      }
+    </style>
+
+</head>
+<body>
+
+  <h3>Radiohead Gloom Index: Holley McShan and Corinne Bintz</h3>
+  <div class = "horiz">
+    <b>Color by...</b>
+    <form class="horiz radios">
+        <input type="radio" name="color_choice" value="avg_dur" checked> Average duration<br>
+        <input type="radio" name="color_choice" value="avg_wd_ct"> Average word count<br>
+        <input type="radio" name="color_choice" value="avg_lyr_dens"> Average lyrical density<br>
+        <input type="radio" name="color_choice" value="album"> Album<br>
+    </form>
+  </div>
+  <br>
+  <div>
+      <svg id="dotplot1"></svg>
+      <div id="tooltip" class="hidden">
+        <p>
+        <b>Song:</b> <span id="track_name"></span><br />
+        <b>Album:</b> <span id="album_name"></span><br />
+        </p>
+      </div>
+      <svg id="dotplot2"></svg>
+      <svg id="dotplot3"></svg>
+  </div>
+  <svg id="barchart"></svg>
+
+
+    <script>
+        // width and height for svg containing dot plot
+        const chartWidth = 300;
+        const chartHeight = 255;
+
+        // width and height for dot plot itself
+        const histWidth = 215;
+        const histHeight = 215;
+
+        const margin = {top: 10, right: 25, bottom: 10, left: 45};
+        const url = 'http://www.cs.middlebury.edu/~candrews/classes/cs465-f18/data/gloom_index.csv'
+
+        d3.csv(url).then((data)=>{
+            console.log(data)
+
+            var nestedData = d3.nest()
+              .key(function(d) { return d.album_name; })
+              .map(data);
+
+            // second dataset of the averaged data for album bar chart
+            const get_average_data = function() {
+              let avg_data = []
+              const nestedDataLength = Object.keys(nestedData).length;
+              const objKeys = Object.keys(nestedData);
+              for (let i = 0; i < nestedDataLength; i++) {
+                let dur = d3.mean(nestedData[objKeys[i]], (d)=>+d.duration_ms);
+                let wc = d3.mean(nestedData[objKeys[i]], (d)=>+d.word_count);
+                let ld = d3.mean(nestedData[objKeys[i]], (d)=>+d.lyrical_density);
+                let gi = d3.mean(nestedData[objKeys[i]], (d)=>+d.gloom_index);
+                let release = nestedData[objKeys[i]][0].album_release_year
+                avg_data.push({
+                  album: objKeys[i],
+                  avgWC: wc,
+                  avgLD: ld,
+                  avgDur: dur,
+                  avgGI: gi,
+                  albNum : i,
+                  release : release
+                });
+              }
+              console.log("AVGGG DATATAAA");
+              console.log(avg_data);
+              return avg_data
+            }
+            const average_data = get_average_data();
+
+            // color scale for bar chart
+            const categ_color = d3.scaleOrdinal(d3.schemeCategory10);
+
+            // configurable object to make dot plots
+            function createPlot(myMetric, myChart) {
+                 return {
+                     metric: myMetric,
+                     chart: myChart,
+                     maxCircles: 0,
+                     sort: function() { // sort the data based on color metric
+                         color = this.color_metric
+                         data.sort(function (a, b) {return (a[color] - b[color])*-1});
+                         if (color === "album_name"){
+                           data.sort((a,b) => (a.album_name > b.album_name) ? 1 : ((b.album_name > a.album_name) ? -1 : 0));
+                         } else {
+                           data.sort(function (a, b) {return (a[color] - b[color])*-1});
+                       }},
+                     axis: function() {
+                         let y_height = chartHeight-25-(this.maxCircles*7)
+                         let y_scale_dots = d3.scaleLinear()
+                             .range([chartHeight-25, y_height])
+                             .domain([0, this.maxCircles]);
+                         let metric = this.metric
+                         let chart = this.chart
+
+                         let myChart = d3.select(chart)
+                           .attr("width", chartWidth + margin.right + margin.left)
+                           .attr("height", chartHeight + margin.top + margin.bottom)
+                           .append("g")
+                           .attr("transform",`translate(${margin.left}, ${margin.top})`);
+
+                         // x scale for axis
+                         const x_scale = d3.scaleLinear()
+                         .rangeRound([0, histWidth])
+                         .domain([0, d3.max(data, (d)=>+d[metric])]);
+
+                         const x_axis = myChart.append("g")
+                           .attr("transform", `translate(-5, ${chartHeight-25})`)
+                           .attr("class", "x_axis")
+                           .call(d3.axisBottom(x_scale));
+
+                         const y_axis = myChart.append("g")
+                           .call(d3.axisLeft(y_scale_dots))
+                           .attr("transform", `translate(-5, 0)`);
+
+
+                         let dif = chartHeight-25-y_height
+
+                         // add axis labels
+                         myChart.append("text")
+                           .attr("text-anchor", "middle")
+                           .attr("transform", `translate(${histWidth/2}, ${chartHeight+5})`)
+                           .text(metric);
+                         myChart.append("text")
+                           .attr("text-anchor", "middle")
+                           .attr("transform",`translate(${3*-margin.left/4}, ${chartHeight-25-dif/2})rotate(-90)`)
+                           .text("Count");
+
+                     },
+                     update: function() { //update the dot plot, called after a change in color or data
+
+                         let color = this.color_metric;
+
+                         let metric = this.metric
+
+                         // x scale for bins
+                         let x_scale = d3.scaleLinear()
+                         .rangeRound([45, chartWidth-40])
+                         .domain([0, d3.max(data, (d)=>+d[metric])]);
+
+                         let chart = this.chart
+
+                         // color scale for dot plot
+                         let color_sc = d3.scaleLinear()
+                           .range([0,1])
+
+                        let fill = function(d){
+                           color_sc.domain(d3.extent(data, (d)=>+d[color]));
+                           return d3.interpolateBlues(color_sc(d.color_input))
+                        }
+
+                        let myChart = d3.select(chart)
+
+                         //tooltip
+                         const tooltip = d3.select("body")
+                          .append("div")
+                            .attr("class", "tooltip")
+                            .style("opacity", 0);
+
+                         const t = d3.transition()
+                          .duration(1000);
+
+                         const nbins = 20;
+
+                         this.sort()
+
+                         let histogram = d3.histogram()
+                           .domain(x_scale.domain())
+                           .thresholds(20)
+                           .value(function(d) { return d[metric] } );
+
+                        let bins = histogram(data);
+
+                        // find max number of circles for y axis
+                        let biggest  = 0;
+                        for (let i = 0; i<bins.length; i++) {
+                            if (bins[i].length > biggest) {
+                                biggest = bins[i].length
+                            }
+                        }
+
+                        this.maxCircles = biggest
+
+                        let binContainer = myChart.selectAll(".gBin")
+                          .data(bins);
+
+                        binContainer.exit().remove()
+
+                        let newBinContainers = binContainer.enter()
+                          .append("g")
+                          .attr("class", "gBin")
+                          .attr("transform", d => `translate(${x_scale(d.x0)}, ${chartHeight-19})`);
+
+                        if (color === "album_name"){
+                          const cat_sc = d3.scaleOrdinal(d3.schemeCategory10);
+                          fill = function(d){
+                            return cat_sc(d.color_input)
+                          }
+                        }
+
+                        binContainer = binContainer.merge(newBinContainers)
+
+                        let circles = binContainer.selectAll("circle").data(data)
+
+                        circles.exit().remove()
+
+                        let newCircles = circles
+                            .data(d => d.map((p, i) => {
+                            p.song = p.track_name;
+                            p.album = p.album_name;
+                            p.color_input = p[color];
+                            p.y = -(i*2)*3.5;
+                            return p
+                            }))
+                            .enter()
+                            .append("circle")
+                            .attr("cx", 3.5)
+                            .attr("cy", (d) => (d.y))
+                            .attr("r", 3.5)
+
+                        circles = circles.merge(newCircles)
+                        .attr("fill", (d) => fill(d));
+
+                      // create the brush
+                      const brush = d3.brushX()
+                         .extent([[0,0], [chartWidth,chartHeight-15]]);
+
+                      // append the brush
+                      const brush_g = myChart.append("g")
+                        .attr("class", "brush")
+                        .call(brush);
+
+                      // configure the brush
+                      brush.on("brush", function(d){
+                        let extent = d3.event.selection
+                        if (extent == null) {
+                          d3.selectAll("circle").classed("deselected", false)
+                        } else {
+
+                          extent = extent.map(x_scale.invert);
+                          d3.selectAll("circle").classed("deselected", function(d){
+                            return(d[metric] < extent[0] || d[metric] > extent[1] )
+                          })
+                        }
+                      });
+
+                      // limit selection to one brush
+                      brush.on("start", function(d){
+                        if (d3.event.sourceEvent.type === "mousedown"){
+                          d3.selectAll(".brush").call(brush.move,null)
+                        }
+                      });
+
+                       // tooltip
+                       brush_g.selectAll(".overlay")
+                           .on("mousemove", function(d){
+                               const parent = this.parentElement;
+                               const coordinates = [d3.event.pageX, d3.event.pageY];
+
+                               // remove the overlay
+                               parent.removeChild(this);
+                               // look at which element is under the overlay at this point
+                               const next_layer = document.elementFromPoint(coordinates[0], coordinates[1]);
+                               // put the overlay back
+                               parent.appendChild(this);
+
+                               // if the next layer down is a circle, show the tooltip
+                               if (next_layer.tagName === "circle"){
+                                   const point = d3.select(next_layer);
+                                   const data = point.data()[0];
+                                   const info = d3.select("#tooltip");
+
+                                   info.style("left", (coordinates[0] + 5 )+ "px")
+                                       .style("top", (coordinates[1] + 5 )+ "px")
+                                       .classed("hidden", false);
+
+
+                                   info.select("#track_name").text(data.song);
+                                   info.select("#album_name").text(data.album);
+
+                               }else{
+                                   // not over a circle, hide the tooltip
+                                   d3.select("#tooltip")
+                                       .classed("hidden", true);
+                               }
+                           });
+
+
+                            }
+                         }
+                     }
+
+             // make gloom plot
+             const gloom_plot = createPlot("gloom_index", "#dotplot1");
+
+             gloom_plot.color_metric = "duration_ms";
+             gloom_plot.update();
+             gloom_plot.axis();
+
+             // make valence plot
+             const valence_plot = createPlot("valence", "#dotplot2");
+
+             valence_plot.color_metric = "duration_ms";
+             valence_plot.update();
+             valence_plot.axis();
+
+             // make pct_sad plot
+             const pct_sad_plot = createPlot("pct_sad", "#dotplot3");
+
+             pct_sad_plot.color_metric = "duration_ms";
+             pct_sad_plot.update();
+             pct_sad_plot.axis();
+
+             d3.select(".radios").on("click", function(d){
+                 handleClick();
+             });
+
+             let dotColor;
+             let choice;
+
+             // functionality for color encoding menu
+             function handleClick() {
+                 let color_choice = document.getElementsByName('color_choice')
+                 for(var i = 0; i < 4; i++){
+                     if(color_choice[i].checked){
+                         choice = color_choice[i].value;
+                     }
+                 }
+
+                 if (choice == "avg_dur") {
+                     dotColor = "duration_ms";
+                 }
+
+                 else if (choice == "avg_wd_ct") {
+                     dotColor = "word_count";
+                 }
+
+                 else if (choice == "avg_lyr_dens") {
+                     dotColor = "lyrical_density"
+                 }
+
+                 else if (choice == "album") {
+                     dotColor = "album_name" //what should this be???
+                 }
+
+                 gloom_plot.color_metric = dotColor;
+                 gloom_plot.update();
+
+                 valence_plot.color_metric = dotColor;
+                 valence_plot.update();
+
+                 pct_sad_plot.color_metric = dotColor;
+                 pct_sad_plot.update();
+             }
+
+        // make the bar chart
+        const createBarChart = function(){
+
+         selection = []
+
+          var margin = {
+            top: 15,
+            right: 25,
+            bottom: 15,
+            left: 20
+          };
+
+          var width = 880 - margin.left - margin.right;
+          var height = 300 - margin.top - margin.bottom;
+
+          var svg = d3.select("#barchart")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+          var x_scale = d3.scaleLinear()
+            .range([0, width])
+            .domain([0, d3.max(average_data, (d)=>+d.avgGI)]);
+
+          var y_scale = d3.scaleBand()
+            .rangeRound([0, height-20])
+            .domain(average_data.map((d)=>+d.albNum))
+            .padding(0.1);
+
+          const categ_color = d3.scaleOrdinal(d3.schemeCategory10);
+
+          let rects = svg.selectAll("rect")
+            .data(average_data, (d) => d.album)
+            .enter()
+
+          let bar = rects.append("rect")
+            .attr("class", "bar")
+            .attr("x",0)
+            .attr("y",(d)=> (y_scale(d.albNum)))
+            .attr("width", (d)=>(x_scale(d.avgGI)))
+            .attr("height",(d)=> (y_scale.bandwidth()))
+            .style("fill",(d)=> categ_color(d.albNum));
+
+            // remove bar functionality
+            bar.on("click", (item_data) => {
+                let album = nestedData[item_data.album]
+                console.log(selection)
+
+                if (selection.length == 0) {
+                    data = []
+                    gloom_plot.update();
+                    valence_plot.update();
+                    pct_sad_plot.update();
+
+                    selection.push(item_data)
+                    for (let i=0; i<album.length; i++){
+                        data.push(album[i])
+                    }
+
+                }
+                else if (!selection.includes(item_data)){
+                    selection.push(item_data)
+                    for (let i=0; i<album.length; i++){
+                        data.push(album[i])
+                    }
+
+                }
+                else {
+                    selection = selection.filter((d)=> d!=item_data);
+                    for (let i=0; i<album.length; i++){
+                        data = data.filter((d)=> d!=album[i]);
+                    }
+                }
+                 d3.selectAll(".bar").classed("deselected", function(item_data){
+                   return(!selection.includes(item_data))
+                 })
+
+                 console.log(data)
+                 gloom_plot.sort();
+                 gloom_plot.update();
+
+                 valence_plot.sort();
+                 valence_plot.update();
+
+                 pct_sad_plot.sort();
+                 pct_sad_plot.update();
+
+                });
+
+
+          svg.selectAll("text")
+            .data(average_data)
+            .enter()
+            .append("text")
+            .attr("class", "label")
+            .attr("text-anchor", "left")
+            .attr("y", (d)=> (y_scale(d.albNum)+20))
+            .attr("x", 3)
+            .style("fill", "white")
+            .text((d) =>(d.album.substring(1)));
+
+          svg.append("g")
+            .attr("transform", `translate(0, ${height-20})`)
+            .call(d3.axisBottom(x_scale));
+
+          svg.append("text")
+            .attr("text-anchor", "middle")
+            .attr("transform", `translate(${-(3*margin.left/4 -8)}, ${height/2})rotate(-90)`)
+            .text("Album");
+
+          svg.append("text")
+              .attr("text-anchor", "middle")
+              .attr("transform", `translate(${width/2}, ${height+margin.bottom-6})`)
+              .text("Average gloom index");
+      };
+
+
+
+        const myBarChart = createBarChart();
+      }).catch((err)=>{
+           console.log(err);
+       });
+
+    </script>
+    </body>
+</html>
