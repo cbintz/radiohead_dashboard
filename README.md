@@ -3,5 +3,5 @@ Assignment 8 for Information Visualization (CS465): Interactive dashboard of Rad
 
 - Created in D3
 - To launch, either
-  1) Visit 
-  2) Download and launch a server
+  1) Visit http://www.cs.middlebury.edu/~cbintz/infovis/hw8/hw8.html
+  2) Download and launch a server 
